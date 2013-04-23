@@ -9,17 +9,184 @@ class Kkn_mhs extends CI_Controller {
 		$this->load->library(array('Pagination','image_lib','FPDF','form_validation'));
     }
 	
+	function cek_krs($nim){
+		
+		$url_api = "http://service.uin-suka.ac.id/servsia/siagetmhskkn.php?aud=1f304662ebfee3932e2e310aa8fb62144&nmm=";
+		$hasil=file_get_contents($url_api.$nim);
+		$datajson=json_decode($hasil);
+		
+		if ($hasil!=""){
+			if($hasil=="7"){
+				echo " tidak diijinkan";
+			}else if ($hasil=="6"){
+				echo "err KRS not retrieved well";
+			}else if ($hasil=="5"){
+				echo "err MK KKN not retrieved well";
+			}else if($hasil=="4"){
+				echo "err fak not allowed";
+			}else if($hasil=="3"){
+				echo "err fak not retrieved well";
+			}else if($hasil=="2"){
+				echo "err wrong auth";
+			}else if($hasil=="1"){
+				echo "err IP not allowed";
+			}else if($hasil=="0"){
+				echo "err undefined";
+			}else {
+				foreach ($datajson as $data){
+					$output=$data;
+				}
+				if ($output==$nim){
+					return 1;
+				} else {
+					echo "data tak sama dengan nim";
+				}
+			}
+		
+		
+		}else {
+			echo "Error";
+		}
+	}
+
+	function cek_bayar_kkn($nim){
+	$cek_krs = $this->cek_krs($nim);
+		if ($cek_krs==1){
+			//json response untuk cek pembayaran 
+		// jika sudah bayar maka ada tgl transaksi
+		///08140115
+			
+			$username="kkn";
+			$password="kkn532";
+			$url="http://service.uin-suka.ac.id/servsibayar/index.php/data/d_bayar_lain/bayar_lain_by_nim_kd/nim/$nim/kd/100/format/json";
+
+			$context = stream_context_create(array(
+				'http' => array(
+					'header'  => "Authorization: Basic " . base64_encode("$username:$password")
+				)
+			));
+			$hasil = file_get_contents($url, false, $context);
+			$transaksi="";
+			$datajson=json_decode($hasil);
+		
+			//$datajson = '"TGL_TRANSAKSI":"31-JAN-12 11.21.52.000000 AM","KD_TA":"2012","KD_SMT":"1","STATUS":"A","NIM":"08140115"';
+			
+			if ($datajson != null){
+						
+						//$transaksifull	='31-JAN-13 11.21.52.000000 AM';
+						$transaksifull	= $datajson->TGL_TRANSAKSI;
+						$hasil_explode 	= explode(" ",$transaksifull);
+						$transaksi		= $hasil_explode[0];
+						//echo $transaksi;
+						$cek_aktif_kkn	= $this->mdl_kkn->get_api(
+								'sia_kkn_mhs/cek_waktu_kkn',
+								'json',
+								'POST',
+								array(	'api_kode' => 1000,
+										'api_subkode' => 1,
+										'api_search' => array($this->session->userdata('nim')))
+								);	
+								
+						if (count($cek_aktif_kkn)>0)
+						{
+							foreach($cek_aktif_kkn as $isi=>$qry)
+							{
+								$date1	= $qry['FIRST_DATE'];
+								$date2	= $qry['LAST_DATE'];
+							}
+						
+						}else {
+							return 0;
+						}
+						
+						$mulai_daftar		= strtotime($date1);
+						$selesai_daftar		= strtotime($date2);
+						$bayar				= strtotime($transaksi);
+					
+						
+						if (($bayar >= $mulai_daftar) && ($bayar <= $selesai_daftar)){
+							return 1;
+							//echo "kkn sekarang";
+						}else if ($bayar < $mulai_daftar){
+							//	echo "dulu bayarnya";
+							
+							$sudah=$this->cek_sudah($nim);
+							if ($sudah==2){
+								echo "sudah 2";
+							//	return 2;
+							}else {
+								echo "sudah tidak 2";
+							//	return 0;
+							}
+							
+							
+						}else {
+								return 0;
+						//	echo "error dab";
+						}
+			
+			
+			}else {
+				return 0;
+				//echo "musmet";
+			}
+			
+		
+		}else {
+		echo "Error cek KRS";
+		}
+		
+	}
+	
+	function cek_sudah(){
+		$sudah = $this->mdl_kkn->get_api(
+					'sia_kkn_mhs/cek_sudah',
+					'json',
+					'POST',
+					array(	'api_kode' => 1000,
+							'api_subkode' => 1,
+							'api_search' => array($this->session->userdata('nim')))
+		);
+		
+		if (count($sudah) > 0)
+		{
+				foreach($sudah as $isi=>$qry)
+				{
+					$status_sudah=$qry['SUDAH'];
+				}
+					if ($status_sudah=="3") 
+					{
+						return 3;
+					}else if($status_sudah=="2"){
+						return 2;
+					}else if($status_sudah=="1"){
+						return 1;
+					}else {
+						return 0;	
+					}
+		}else {
+			return 0;
+				
+		}
+	}
 	
 	function cek_masa_kkn(){
-		$this->db = $this->load->database('kkn', TRUE);
-		$this->load->model('Form_Model','',TRUE);
-		$cek_aktif_kkn	= $this->Form_Model->cek_waktu_kkn();
-			if (count($cek_aktif_kkn->result_array())>0)
+		
+		$cek_aktif_kkn	= $this->mdl_kkn->get_api(
+					'sia_kkn_mhs/cek_waktu_kkn',
+					'json',
+					'POST',
+					array(	'api_kode' => 1000,
+							'api_subkode' => 1,
+							'api_search' => array($this->session->userdata('nim')))
+					);	
+					
+			if (count($cek_aktif_kkn)>0)
 			{
-				foreach($cek_aktif_kkn->result() as $wktu)
+				foreach($cek_aktif_kkn as $isi=>$qry)
 				{
-					$date1	= $wktu->FIRST_DATE;
-					$date2	= $wktu->LAST_DATE;
+					$date1	= $qry['FIRST_DATE'];
+					$date2	= $qry['LAST_DATE'];
 				}
 			
 			}else {
@@ -33,44 +200,68 @@ class Kkn_mhs extends CI_Controller {
 		
 			if ($sekarang >= $mulai_daftar && $sekarang <= $selesai_daftar){
 				return 1;
+				//echo "sip";
 			}else {
-				return 0;			
+				return 0;	
+				//echo 	"sop";			
 			}
 	
 	}
 	
 	function cek_sudah_ke_poli($nim){
-		$this->db = $this->load->database('poli', TRUE);
-		$this->load->model('Form_Model','',TRUE);
-		$hasil=$this->Form_Model->cek_sudah_poli($nim);
-		if (count($hasil->result_array())>0){
-			return 1;
-		}else {
-			return 0;
-		}
+		
+		//cek API
 	
 	}
 	
-	function cek_sudah2($nim){
-		// return 1 jika sudah sudah pernah input data kkn
-		$this->db = $this->load->database('kkn', TRUE);
-		$this->load->model('Form_Model');
-		$hasil=$this->Form_Model->cek_sudah($nim);
-			if (count($hasil->result_array())>0){
-				foreach($hasil->result() as $items){
-					$sudah=$items->SUDAH;
+
+	function cek_all_before(){
+		//$nim	= $this->session->userdata('nim');
+		//cek krs, cek bayar, cek poli, cek sudah, cek waktu kkn
+		$cek_krs 	=1; // cek api dari KRS SIA, jika sudah connect ke server service
+		$cek_bayar	=1; //cek api host to host bank
+		$cek_poli	=1; //cek api db poliklinik
+		$cek_sudah	= $this->cek_sudah();
+		$cek_waktu_kkn	= $this->cek_waktu_kkn();
+			if ($cek_krs==1){
+				if($cek_bayar==1){
+					if($cek_poli==1){
+						if($cek_sudah==3){
+							redirect('kkn/kkn_mhs/home');
+						}else {
+							if($cek_waktu_kkn==1){
+								if($cek_sudah==0){
+									redirect('kkn/kkn_mhs/setuju');
+								}else if($cek_sudah==1){
+									redirect('kkn/kkn_mhs/uploaddoc');
+								}else if($cek_sudah==2){
+									redirect('kkn/kkn_mhs/home');
+								}else {
+									return FALSE; //error
+								}
+							}else{
+								//bukan masa pendaftaran kkn
+								
+							}
+						}
+					
+					}else{
+					//error belum ke poli
+					
+					}
+				
+				}else {
+					//error belum bayar
+				
 				}
-				if(($sudah=='2') || ($sudah=='3')){
-					return 2;
-				}
-				else {
-					return 0;
-				}
+				
 			}else {
-				return 0;
+				//error belum krs
+			
 			}
-	}
 	
+	
+	}
 	function index()
 	{
  		redirect('kkn/kkn_mhs/home');
@@ -871,53 +1062,89 @@ function do_upload_kerja_front(){
 	
 	function kelompok()
 	{
-		$data1 = $this->mdl_kkn->get_api(
+				$sudah = $this->cek_sudah();
+		if ($sudah==3){
+					$data1 = $this->mdl_kkn->get_api(
 					'sia_kkn_mhs/get_angkatan_kkn',
 					'json',
 					'POST',
 					array(	'api_kode' => 1000,
 							'api_subkode' => 1,
 							'api_search' => array($this->session->userdata('nim')))
-		);	
-		$data2 = $this->mdl_kkn->get_api(
-					'sia_kkn_mhs/get_info_kelompok',
-					'json',
-					'POST',
-					array(	'api_kode' => 1000,
-							'api_subkode' => 1,
-							'api_search' => array($this->session->userdata('nim')))
-		);	
-		$data3 = $this->mdl_kkn->get_api(
-					'sia_kkn_mhs/get_member_kelompok_by_nim',
-					'json',
-					'POST',
-					array(	'api_kode' => 1000,
-							'api_subkode' => 1,
-							'api_search' => array($this->session->userdata('nim')))
-		);	
+					);	
+					$data2 = $this->mdl_kkn->get_api(
+								'sia_kkn_mhs/get_info_kelompok',
+								'json',
+								'POST',
+								array(	'api_kode' => 1000,
+										'api_subkode' => 1,
+										'api_search' => array($this->session->userdata('nim')))
+					);	
+					$data3 = $this->mdl_kkn->get_api(
+								'sia_kkn_mhs/get_member_kelompok_by_nim',
+								'json',
+								'POST',
+								array(	'api_kode' => 1000,
+										'api_subkode' => 1,
+										'api_search' => array($this->session->userdata('nim')))
+					);	
+					
+					
+					if ((count($data1) > 0) && (count($data2) > 0) && (count($data3) >0)){
+						$dt1['datakkn']=$data1;
+						$dt2['datainfo']=$data2;
+						$dt3['data_isi']=$data3;
+						$this->load->view('kkn/mhs/header');
+						$this->load->view('kkn/mhs/content');
+						$this->load->view('kkn/mhs/v_kelompok');
+						$this->load->view('kkn/mhs/datakkn',$dt1);
+						$this->load->view('kkn/mhs/infokelompok',$dt2);
+						$this->load->view('kkn/mhs/lihatkelompok',$dt3);
+						$this->load->view('kkn/mhs/footer');
+					}else{
+						redirect('kkn/kkn_mhs/home');
+					}	
 		
-		
-		if ((count($data1) > 0) && (count($data2) > 0) && (count($data3) >0)){
-			$dt1['datakkn']=$data1;
-			$dt2['datainfo']=$data2;
-			$dt3['data_isi']=$data3;
-			$this->load->view('kkn/mhs/header');
-			$this->load->view('kkn/mhs/content');
-			$this->load->view('kkn/mhs/v_kelompok');
-			$this->load->view('kkn/mhs/datakkn',$dt1);
-			$this->load->view('kkn/mhs/infokelompok',$dt2);
-			$this->load->view('kkn/mhs/lihatkelompok',$dt3);
-			$this->load->view('kkn/mhs/footer');
-		}else{
-			redirect('kkn/kkn_mhs/home');
-		}	
+		}else {
+			?>
+					<script type="text/javascript">
+						alert('LPM Belum melakukan Pembagian Kelompok KKN secara keseluruhan, silahkan tunggu beberapa hari lagi');
+					</script>
+					<?php
+					echo "<meta http-equiv='refresh' content='0; url=".base_url()."kkn/kkn_mhs/home'>";
+		}
 		
 		
 	}
 	
 	function expbuktidaftar()
 	{
+		$sudah = $this->cek_sudah();
+		if ($sudah==3){
+					$data = $this->mdl_kkn->get_api(
+					'sia_kkn_mhs/get_buktidaftar',
+					'json',
+					'POST',
+					array(	'api_kode' => 1000,
+							'api_subkode' => 1,
+							'api_search' => array($this->session->userdata('nim')))
+					);
+				
+					if (count($data) > 0){
+						$dt['data']		=$data;
+						$this->load->view('kkn/mhs/expbuktidaftar', $dt);
+					}else{
+						redirect('kkn/kkn_mhs/home');
+					}	
 		
+		}else {
+			?>
+					<script type="text/javascript">
+						alert('LPM Belum melakukan Pembagian Kelompok KKN secara keseluruhan, silahkan tunggu beberapa hari lagi');
+					</script>
+					<?php
+					echo "<meta http-equiv='refresh' content='0; url=".base_url()."kkn/kkn_mhs/home'>";
+		}
 		
 	}
 	
@@ -943,36 +1170,6 @@ function do_upload_kerja_front(){
 	
 	}
 	
-	function cek_sudah(){
-		$sudah = $this->mdl_kkn->get_api(
-					'sia_kkn_mhs/cek_sudah',
-					'json',
-					'POST',
-					array(	'api_kode' => 1000,
-							'api_subkode' => 1,
-							'api_search' => array($this->session->userdata('nim')))
-		);
-		
-		if (count($sudah) > 0)
-		{
-				foreach($sudah as $isi=>$qry)
-				{
-					$status_sudah=$qry['SUDAH'];
-				}
-					if ($status_sudah=="3") 
-					{
-						return 3;
-					}else if($status_sudah=="2"){
-						return 2;
-					}else if($status_sudah=="1"){
-						return 1;
-					}else {
-						return FALSE;	
-					}
-		}else {
-			return FALSE;
-				
-		}
-	}
+
 
 }
