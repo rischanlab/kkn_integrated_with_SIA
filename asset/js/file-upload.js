@@ -1,0 +1,10 @@
+$(function(){
+		$('#sktm').customFileInput();
+		$('#userfile').customFileInput();
+		$('#sk_cuti_kerja').customFileInput();
+		$('#sk_tidak_hamil').customFileInput();
+		$('#foto').customFileInput();
+		$('#skmk').customFileInput();
+		$('#sk').customFileInput();
+		$('#s').customFileInput();
+});
